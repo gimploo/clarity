@@ -1,1 +1,1 @@
-### Player journey Visualization Tool
+### Player Journey Visualization Tool
