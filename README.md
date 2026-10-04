@@ -38,7 +38,7 @@ Deployment is automated: pushing to `master` builds and publishes to
 | **Timeline** | Scrub or play any single match across every participant |
 | **Heatmaps** | High-traffic areas, kill zones and death zones |
 | **Inspect** | Hover any point for world coordinates, match-relative time and raw event name |
-| **Navigate** | Wheel to zoom, drag to pan, "Zoom to data" to frame the current selection |
+| **Navigate** | The view always fits the whole map; pick a single match to read it in detail |
 
 ### Reading the map
 
@@ -54,11 +54,32 @@ Deployment is automated: pushing to `master` builds and publishes to
 
 | Input | Action |
 | --- | --- |
-| Wheel / `+` `-` | Zoom |
-| Drag | Pan |
 | Click | Select a player |
 | `Esc` | Clear selection |
-| `0` | Reset view |
+| Drop a folder | Load a local dataset (see below) |
+
+### Selecting a match
+
+Overlaying hundreds of matches at once is unreadable, so every match starts selected
+and the map is dimmed behind a prompt. Choose one match in the sidebar to dismiss
+it and read that match in detail; clearing the selection brings the prompt back.
+
+### Loading your own data
+
+Drag a dataset folder anywhere onto the window. It should contain day directories of
+`.nakama-*` parquet files, for example:
+
+```
+player_data/
+  February_10/
+    <userId>_<matchId>.nakama-0
+  February_11/
+    ...
+```
+
+The files are read locally in the browser and nothing is uploaded. Day names are
+taken from the folder structure, so dropping the folder is required rather than
+loose files. Minimaps always come from the deployed app.
 
 ## Project layout
 
@@ -66,9 +87,9 @@ Deployment is automated: pushing to `master` builds and publishes to
 src/core/      Domain logic: types, map geometry, coordinates, player classification
 src/data/      Parquet loading (browser) and the in-memory dataset index
 src/render/    Canvas scene: viewport, paths, markers, heatmap
-src/ui/        Panels, timeline, tooltip, app shell
+src/ui/        Panels, timeline, tooltip, app shell, drag & drop loading
 scripts/       Asset pipeline and the verification scripts
-test/          Unit tests and a DOM mount smoke test
+test/          Unit tests plus DOM mount, hit-testing and drag & drop tests
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for design decisions and the data
@@ -93,6 +114,6 @@ either assumption regresses.
 | `npm run prepare:assets` | Downscale minimaps to WebP, stage parquet files, write `public/data/manifest.json` |
 | `npm run verify:mapping` | Push all 89,104 rows through the coordinate transform; fail if any lands off the minimap |
 | `npm run verify:loader` | Assert the browser's restricted Parquet read still returns identity columns |
-| `npm test` | Coordinate, viewport and DOM mount/playback tests |
+| `npm test` | Coordinate, viewport, hit-testing, DOM mount/playback and drag & drop tests |
 | `npm run analyze` | Recompute every figure quoted in [INSIGHTS.md](INSIGHTS.md) |
 | `npm run verify` | Typecheck, tests, loader contract and coordinate mapping |

@@ -2,8 +2,8 @@
  * Density heatmap overlay.
  *
  * Points are accumulated into a fixed grid in UV space, which keeps the cost
- * independent of zoom and canvas size. The grid is painted once into an
- * offscreen canvas and blitted, so panning and zooming stay cheap.
+ * independent of canvas size. The grid is painted once into an offscreen canvas
+ * and blitted, so nothing about it is redrawn while the view is static.
  *
  * UV is the right space to bin in because the grid then lines up with the map
  * rather than with the current viewport.
@@ -53,6 +53,14 @@ export class HeatmapLayer {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private signature = '';
+  private currentMode: HeatmapMode = 'none';
+  /**
+   * Peak grid value, computed once per {@link build}.
+   *
+   * Cached rather than rescanned in {@link draw}: draw runs on every playback
+   * frame, and a 65,536-cell scan per frame is pure waste.
+   */
+  private peakValue = 0;
 
   constructor() {
     this.canvas = document.createElement('canvas');
@@ -72,6 +80,7 @@ export class HeatmapLayer {
   build(journeys: Journey[], mode: HeatmapMode, signature: string): void {
     this.signature = signature;
     this.grid.fill(0);
+    this.currentMode = mode;
 
     if (mode !== 'none' && journeys.length > 0) {
       for (const journey of journeys) {
@@ -129,6 +138,7 @@ export class HeatmapLayer {
     for (let i = 0; i < this.grid.length; i++) {
       if (this.grid[i]! > max) max = this.grid[i]!;
     }
+    this.peakValue = max;
 
     const image = this.ctx.createImageData(GRID, GRID);
     const data = image.data;
@@ -153,30 +163,25 @@ export class HeatmapLayer {
     this.ctx.putImageData(image, 0, 0);
   }
 
+  /** Current heatmap mode. */
+  mode(): HeatmapMode {
+    return this.currentMode;
+  }
+
   /** Peak grid value, for the legend scale. */
   peak(): number {
-    let max = 0;
-    for (let i = 0; i < this.grid.length; i++) {
-      if (this.grid[i]! > max) max = this.grid[i]!;
-    }
-    return max;
+    return this.peakValue;
   }
 
   /** Draws the overlay over the minimap. */
   draw(ctx: CanvasRenderingContext2D, viewport: Viewport, alpha: number): void {
-    if (alpha <= 0 || this.peak() <= 0) return;
+    if (alpha <= 0 || this.peakValue <= 0) return;
     const rect = viewport.fitRect();
 
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(
-      this.canvas,
-      rect.x + viewport.panX,
-      rect.y + viewport.panY,
-      rect.w * viewport.zoom,
-      rect.h * viewport.zoom,
-    );
+    ctx.drawImage(this.canvas, rect.x, rect.y, rect.w, rect.h);
     ctx.restore();
   }
 }

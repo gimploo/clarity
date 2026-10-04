@@ -221,7 +221,7 @@ describe('filter propagation', () => {
     expect(calls.length).toBeGreaterThan(before);
   });
 
-  it('switches map on tab click and resets the viewport', async () => {
+  it('switches map on tab click', async () => {
     await app.start();
     const grandRiftTab = [...root.querySelectorAll('.tab')].find((t) =>
       (t.textContent ?? '').includes('Grand Rift'),
@@ -230,6 +230,39 @@ describe('filter propagation', () => {
 
     const selected = root.querySelector('.tab[aria-selected="true"]');
     expect(selected?.textContent).toContain('Grand Rift');
+  });
+
+  it('repaints but does not rebuild the sidebar while dragging opacity', async () => {
+    // Regression guard for issue #2. `input` fires on every pixel of slider
+    // travel; rebuilding every panel's DOM each time made dragging visibly lag.
+    await app.start();
+    const slider = root.querySelector<HTMLInputElement>('.slider')!;
+    const selectBefore = root.querySelector('.sidebar select');
+    const drawsBefore = calls.length;
+
+    slider.value = '0.4';
+    slider.dispatchEvent(new Event('input'));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+    // Same element instance, so the panel was not rebuilt.
+    expect(root.querySelector('.sidebar select')).toBe(selectBefore);
+    // The readout still tracked the slider.
+    expect(root.querySelector('.field__value')?.textContent).toBe('40%');
+    // ...and the canvas was repainted.
+    expect(calls.length).toBeGreaterThan(drawsBefore);
+  });
+
+  it('still rebuilds the sidebar when a filter genuinely changes', async () => {
+    // Counterpart to the test above: the cheap opacity path must not have
+    // disabled normal reactivity.
+    await app.start();
+    const selectBefore = root.querySelector('.sidebar select');
+
+    const matchSelect = [...root.querySelectorAll<HTMLSelectElement>('.sidebar select')][0]!;
+    matchSelect.value = 'm1';
+    matchSelect.dispatchEvent(new Event('change'));
+
+    expect(root.querySelector('.sidebar select')).not.toBe(selectBefore);
   });
 
   it('advances the playhead while playing and stops on pause', async () => {

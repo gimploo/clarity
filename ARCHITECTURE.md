@@ -58,8 +58,8 @@ py = (1 - v) · height
 folding it in would shear every path.
 
 The payoff is that the same numbers work for the 4320px source, the 2048px WebP
-asset, a HiDPI backing store, and any zoom level. Verified: all 89,104 rows land
-inside the unit square for their map (`npm run verify:mapping`).
+asset and a HiDPI backing store. Verified: all 89,104 rows land inside the unit
+square for their map (`npm run verify:mapping`).
 
 ### Humans vs bots: classify by `user_id`, not by event type
 
@@ -121,6 +121,31 @@ The loader keys ranges with a synthetic query parameter (`?__range=start-end`)
 instead, which is part of the key. It is only ever used for `cache.put`/`match`,
 never fetched, so it cannot affect the real request.
 
+### One loader, two sources
+
+Dropping a dataset folder (issue #5) needs the same parse-and-index path as the
+bundled data, so `loader.ts` is split around a small `DataSource` interface: a file
+list, the days present, and `open(file) -> AsyncBuffer`. `bundledSource` supplies
+HTTP plus the Range probe and Cache API; `localSource` supplies `Blob.slice`.
+
+Both converge on `loadFrom`, so progress reporting, failure handling, the restricted
+column contract and journey parsing exist exactly once.
+
+Two details are specific to the drop path:
+
+- **The folder has to be walked with `webkitGetAsEntry`.** `File.name` is only
+  `<userId>_<matchId>.nakama-0`, so `day` — which exists nowhere in the parquet
+  contents — is only recoverable from the directory structure. The reader returns at
+  most 100 children per call and must be drained until empty, or a large folder is
+  silently truncated.
+- **Loose files are rejected, not guessed at.** Without the entries API there is no
+  path, so a day would have to be invented. Failing with an explanatory message
+  beats attributing someone else's match to the wrong day.
+
+`Blob.slice` also needs no Range request, so a local load skips the probe and the
+Cache API entirely and is never `degraded`. Minimaps are *not* part of the drop —
+they ship with the app — so switching datasets needs no new image assets.
+
 ### Timestamps: rebase per match, then time-warp playback
 
 Raw `ts` values sit around 1.77e9 with an arbitrary per-file offset, so absolute
@@ -140,7 +165,7 @@ sorted on load — an unsorted polyline draws a visible zig-zag.
 ### One canvas, fixed layer order
 
 With ~61k visible points on the busiest map, a single canvas beats stacked DOM or
-SVG elements: no node churn, and pan/zoom stay interactive. Layer order is
+SVG elements: no node churn, and redraws stay interactive. Layer order is
 minimap → heatmap → paths → markers → heads → border.
 
 Ordering within the layers is deliberate:
@@ -154,13 +179,49 @@ Ordering within the layers is deliberate:
 ### Heatmap: bin in UV, paint once
 
 Density is accumulated into a fixed 256x256 grid in UV space, then painted once
-into an offscreen canvas and blitted. Two consequences: panning and zooming cost
-nothing extra, and the grid stays aligned to the map rather than to the viewport.
+into an offscreen canvas and blitted. Two consequences: the map image underneath
+is free to composite under the heatmap, and the grid stays aligned to the map
+rather than to the viewport.
 
-The grid is rebuilt only when the filters that affect it change — accumulating ~60k
-samples on every pan or playback frame would be wasteful. Grid values are
-square-root scaled for display because raw counts are heavily skewed, and a linear
-ramp shows one blown-out hotspot and nothing else.
+The grid is rebuilt only when the filters that affect it change — re-accumulating
+~60k samples on every playback frame would be wasteful. The peak value is cached
+alongside it so the opacity slider does not recompute the display ramp either.
+Grid values are square-root scaled for display because raw counts are heavily
+skewed, and a linear ramp shows one blown-out hotspot and nothing else.
+
+### Hit testing in paint order, in CSS pixels
+
+Picking used a single flat 10px radius and returned whichever journey happened to
+be scanned first, so a 6px loot square swallowed the 10px death diamond drawn on
+top of it and a stale path could beat a fresh marker.
+
+Instead, `MARKER_PAINT_ORDER` is shared by the draw pass and the pick pass, each
+kind gets the radius it is actually drawn at (plus 3px of padding), and distances
+are compared in CSS pixels — the same space the marker sizes are expressed in, so
+there is no DPI or map-scale factor to get wrong. Ties go to the later-drawn
+journey, matching what the eye sees.
+
+### Fit-only viewport
+
+Zoom and pan were removed after the minimap turned out to be legible at fit scale
+in every supported case; they cost a transform on every pointer event and every
+hover test. `viewport.ts` is now a pure letterbox fit with `project`, `unproject`
+and `projectWorld`. The tradeoff is Lockdown: at 9000x9000 a whole-map view leaves
+each player a few pixels wide, and there is no way to zoom into a corner. A
+selection is the intended way to get detail instead.
+
+### Overlaying every match is unreadable, so prompt for one
+
+With 796 matches selected, Ambrose Valley draws ~61k points on top of itself and
+no individual journey is recoverable. A label in the corner saying "select one
+match" was easy to miss and did not explain the result.
+
+Instead the whole map is dimmed behind a centred card that reports how many matches
+are overlaid, with a button that focuses the match select. The condition is exactly
+`filters.matchIds.length === 0` — "all matches selected" — so clearing the
+selection restores the prompt and choosing one dismisses it. The card is a stage
+overlay rather than in-flow markup, so it covers the map without affecting layout
+and intercepts clicks aimed at the canvas underneath.
 
 ### Playback without rebuilding the DOM
 
@@ -168,6 +229,13 @@ The animation loop calls into the store on every frame. The timeline therefore
 separates a *structural* render (selection or replay settings changed — rebuild
 the tick strip) from a cheap *cursor* update (move one absolutely-positioned
 div). Rebuilding up to 600 tick elements per frame would drop the animation.
+
+The heatmap opacity slider had the same shape of bug (issue #2): it was dispatched
+as an ordinary filter change, so every `input` event during a drag rebuilt the
+sidebar, re-created every timeline tick and re-ran the whole render path. It now
+has its own store channel that updates two text nodes and schedules one frame, so
+dragging the slider touches nothing else. `test/app-smoke` pins the boundary:
+opacity changes must not replace sidebar DOM, while a real filter change must.
 
 The event strip itself is a bonus: kills tick along the top edge of the scrubber,
 deaths along the bottom, so the shape of a fight is visible before pressing play.
@@ -198,10 +266,12 @@ Things the shipped data does not tell you, all verified rather than assumed:
 | 1,243 requests | HTTP range requests; manifest byte lengths skip hyparquet's HEAD probe |
 | Repeat visits | Cache API per byte range |
 | ~61k points on one map | Single canvas; bots/humans sorted once per frame, not per point |
-| Pan/zoom cost | Heatmap pre-rendered to an offscreen canvas; only the blit runs |
+| Opacity slider drags | Heatmap alpha has its own store channel; no DOM rebuild or grid re-accumulation |
+| Heatmap blit cost | Pre-rendered to an offscreen canvas; only the blit runs |
 | Playback frames | Cursor updates touch one element; tick strip rebuilt only on selection change |
 | Concurrency | 24 in-flight fetches, which HTTP/2 multiplexes comfortably |
 | Parse throughput | All 1,243 files decode in ~1.5s in Node; the browser path adds transfer time |
+| Local datasets | `Blob.slice` needs no Range request, so dropped files skip the probe and Cache API |
 
 ## Verification
 
@@ -212,8 +282,10 @@ Every claim in this document is enforced by a script that runs in CI:
 | `verify:mapping` | All 89,104 rows land inside their minimap's UV bounds |
 | `verify:loader` | A restricted column read still returns `map_id`/`match_id`/`user_id` |
 | `test/coordinates` | Coordinate transform, event semantics, filename id parsing |
-| `test/viewport` | Fit, letterboxing, zoom/pan round-trips, anchor invariance, zoom clamping |
-| `test/app-smoke` | Mounts a real `App` against a DOM and drives filters, map tabs and playback |
+| `test/viewport` | Fit and letterboxing, projection round-trips, world-projection equivalence |
+| `test/scene-pick` | Hit radius, paint-order priority, tie direction, click tolerance |
+| `test/app-smoke` | Mounts a real `App` against a DOM and drives filters, map tabs, playback, opacity and the match prompt |
+| `test/dropzone` | Recursive folder walk, day-path recovery, reader batching, local slicing |
 | `analyze` | Recomputes every figure quoted in INSIGHTS.md |
 
 `verify:loader` and `verify:mapping` both exit non-zero on failure, and

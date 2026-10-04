@@ -13,6 +13,8 @@ export interface AppState {
   selectedPlayer: string | null;
   /** Heatmap overlay opacity, 0..1. */
   heatmapAlpha: number;
+  /** Show path lines even when a heatmap is active. */
+  showPathsWithHeatmap: boolean;
   showMiniMap: boolean;
 }
 
@@ -44,6 +46,7 @@ export function initialPlayback(): PlaybackState {
 export class Store {
   private state: AppState;
   private listeners = new Set<(state: AppState) => void>();
+  private alphaListeners = new Set<(alpha: number) => void>();
 
   constructor(mapId: MapId) {
     this.state = {
@@ -51,6 +54,7 @@ export class Store {
       playback: initialPlayback(),
       selectedPlayer: null,
       heatmapAlpha: 0.75,
+      showPathsWithHeatmap: true,
       showMiniMap: true,
     };
   }
@@ -91,9 +95,31 @@ export class Store {
     this.setFilters({ heatmap });
   }
 
+  /**
+   * Sets the overlay opacity on a notification channel of its own.
+   *
+   * The opacity slider fires `input` on every pixel of travel, and a full
+   * re-render rebuilds every panel's DOM (including every `<option>` in the day,
+   * match and player selects). Routing that through {@link update} made dragging
+   * the slider visibly lag (issue #2). Opacity cannot change any filter, filter
+   * derived text or the tab counts, so it gets a cheap path that only the slider
+   * readout and the canvas care about.
+   */
+  setHeatmapAlpha(alpha: number): void {
+    if (this.state.heatmapAlpha === alpha) return;
+    this.state = { ...this.state, heatmapAlpha: alpha };
+    for (const listener of this.alphaListeners) listener(alpha);
+  }
+
   subscribe(listener: (state: AppState) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** Subscribes to opacity changes only. See {@link setHeatmapAlpha}. */
+  onAlpha(listener: (alpha: number) => void): () => void {
+    this.alphaListeners.add(listener);
+    return () => this.alphaListeners.delete(listener);
   }
 
   private emit(): void {

@@ -24,6 +24,11 @@ const HEATMAP_MODES: Array<[HeatmapMode, string]> = [
 
 const MARKER_ORDER: MarkerKind[] = ['kill', 'death', 'stormDeath', 'loot'];
 
+/** Opacity as a whole percentage, so the readout never shows 0.30000000004. */
+function formatAlpha(alpha: number): string {
+  return `${Math.round(alpha * 100)}%`;
+}
+
 const MARKER_TOGGLE: Record<MarkerKind, 'showKills' | 'showDeaths' | 'showLoot' | 'showStormDeaths'> = {
   kill: 'showKills',
   death: 'showDeaths',
@@ -44,6 +49,16 @@ export class Sidebar {
   private heatmapHost!: HTMLElement;
   private statsHost!: HTMLElement;
   private legendHost!: HTMLElement;
+
+  /**
+   * Live refs to the opacity control, so {@link setAlpha} can update it without
+   * rebuilding the panel (issue #2).
+   */
+  private alphaSlider: HTMLInputElement | null = null;
+  private alphaReadout: HTMLSpanElement | null = null;
+
+  // (prompt removed)
+  // private matchSelect: HTMLSelectElement | null = null;
 
   constructor(dataset: Dataset, store: Store) {
     this.dataset = dataset;
@@ -162,6 +177,7 @@ export class Sidebar {
       select.append(option);
     }
 
+    // this.matchSelect = select;
     this.matchHost.append(el('label', { class: 'field' }, select));
 
     if (filters.matchIds.length === 1) {
@@ -274,7 +290,7 @@ export class Sidebar {
 
   private renderHeatmap(): void {
     clear(this.heatmapHost);
-    const { filters, heatmapAlpha } = this.store.get();
+    const { filters, heatmapAlpha, showPathsWithHeatmap } = this.store.get();
 
     const select = el('select', {
       onchange: (event: Event) =>
@@ -287,6 +303,18 @@ export class Sidebar {
     }
     this.heatmapHost.append(el('label', { class: 'field' }, select));
 
+    const linesToggle = el('label', { class: 'check' },
+      el('input', {
+        type: 'checkbox',
+        checked: showPathsWithHeatmap,
+        onchange: (event: Event) =>
+          this.store.update({ showPathsWithHeatmap: (event.target as HTMLInputElement).checked }),
+      }),
+      el('span', { class: 'check__swatch', style: 'background: var(--text)' }),
+      'Show paths over heatmap',
+    );
+    this.heatmapHost.append(linesToggle);
+
     const slider = el('input', {
       type: 'range',
       min: '0',
@@ -295,12 +323,39 @@ export class Sidebar {
       value: String(heatmapAlpha),
       disabled: filters.heatmap === 'none',
       oninput: (event: Event) =>
-        this.store.update({ heatmapAlpha: Number((event.target as HTMLInputElement).value) }),
+        this.store.setHeatmapAlpha(Number((event.target as HTMLInputElement).value)),
     });
     slider.className = 'slider';
+
+    const readout = el('span', { class: 'field__value' }, formatAlpha(heatmapAlpha));
+    this.alphaSlider = slider;
+    this.alphaReadout = readout;
+
     this.heatmapHost.append(
-      el('label', { class: 'field' }, el('span', { class: 'field__label' }, 'Opacity'), slider),
+      el(
+        'label',
+        { class: 'field' },
+        el(
+          'span',
+          { class: 'field__head' },
+          el('span', { class: 'field__label' }, 'Opacity'),
+          readout,
+        ),
+        slider,
+      ),
     );
+  }
+
+  /**
+   * Repaints only the opacity control.
+   *
+   * Called from the store's alpha channel while the slider is being dragged. The
+   * panel rebuild in {@link render} is reserved for changes that can actually
+   * alter a filter, a count or the disabled state of this control.
+   */
+  setAlpha(alpha: number): void {
+    if (this.alphaSlider) this.alphaSlider.value = String(alpha);
+    if (this.alphaReadout) this.alphaReadout.textContent = formatAlpha(alpha);
   }
 
   // ---- read-only panels ----------------------------------------------------

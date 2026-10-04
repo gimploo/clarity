@@ -34,8 +34,8 @@ Notice two things immediately:
 - **Orange crosses and red triangles cluster in the middle** while yellow loot
   squares hug the south and west edges.
 
-Click **Zoom to data**. The viewport frames the populated region and you can see
-how much of the map is empty.
+The whole map is drawn to fit, so the empty margins are visible without any
+further action: most of the map is genuinely unvisited.
 
 ---
 
@@ -43,7 +43,7 @@ how much of the map is empty.
 
 Worth doing once before trusting any spatial claim.
 
-1. Click **Reset view** (`0`).
+1. Pick a single match in the sidebar to dismiss the overlay prompt.
 2. Note the busiest area — around the map centre.
 3. Compare the drawn paths against the minimap's terrain.
 
@@ -169,7 +169,7 @@ useful for identifying what is actually built at a hot location.
 ## 8. Coverage gap
 
 1. Click the **Grand Rift** tab (59 matches, 7.7% of samples).
-2. Use **Zoom to data**, then pan.
+2. Pick one match, or keep them all and read the heatmap instead of the paths.
 3. Only **36.7%** of the map's grid cells ever received a sample.
 
 Grand Rift is the least-played and least-sampled map, so its findings are the

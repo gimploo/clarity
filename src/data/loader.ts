@@ -50,6 +50,43 @@ export interface Manifest {
   files: ManifestFile[];
 }
 
+/**
+ * Where the parquet bytes come from.
+ *
+ * The bundled source fetches over HTTP with Range requests and the Cache API; a
+ * local source reads dropped {@link File}s straight off disk. Both hand
+ * {@link loadFrom} the same file list and the same way to open one, so parsing,
+ * failure handling, progress reporting and indexing exist exactly once.
+ */
+export interface DataSource {
+  /** Human-readable origin, surfaced in the UI. */
+  label: string;
+  files: readonly ManifestFile[];
+  /** Day folders present, used to seed the day filter. */
+  days: readonly string[];
+  /** True when the transport can only return whole files. */
+  degraded: boolean;
+  /** Opens one file for reading. */
+  open(file: ManifestFile): AsyncBuffer;
+}
+
+/** A local file plus its path relative to the dropped root. */
+export interface DroppedFile {
+  file: File;
+  /** POSIX-separated, e.g. `February_10/abc_def.nakama-0`. */
+  path: string;
+}
+
+/** Wraps a browser File as the minimal interface hyparquet reads. */
+function bufferFromFile(file: File): AsyncBuffer {
+  return {
+    byteLength: file.size,
+    // Blob.slice already clamps to the file bounds, which is exactly the
+    // semantics hyparquet expects.
+    slice: (start, end) => file.slice(start, end).arrayBuffer(),
+  };
+}
+
 export type LoadPhase =
   | 'manifest'
   | 'probing'
@@ -225,6 +262,71 @@ async function probeRangeSupport(sample: ManifestFile): Promise<boolean> {
   }
 }
 
+/**
+ * The dataset shipped with the app: fetched over HTTP.
+ *
+ * The Range probe and the Cache API both live here rather than in
+ * {@link loadFrom}, because neither applies to a local file.
+ */
+async function bundledSource(report: (patch: Partial<LoadProgress>) => void): Promise<DataSource> {
+  report({ phase: 'manifest' });
+  const manifest = await fetchManifest();
+
+  const sample = manifest.files[0];
+  let ranged = false;
+  if (sample) {
+    report({ phase: 'probing', total: manifest.totalFiles, totalBytes: manifest.totalBytes });
+    ranged = await probeRangeSupport(sample);
+  }
+
+  const cache = canUseCacheApi();
+
+  return {
+    label: 'bundled dataset',
+    files: manifest.files,
+    days: manifest.days,
+    degraded: !ranged,
+    open: (file) => makeBuffer(assetUrl(`data/${file.p}`), file.s, { cache, ranged }),
+  };
+}
+
+/**
+ * A dataset from files the user dropped onto the page (issue #5).
+ *
+ * Only `day` has to come from the path: `map_id`, `match_id` and `user_id` are all
+ * read out of the parquet contents, so a dropped folder only needs to preserve its
+ * day directories.
+ */
+export function localSource(dropped: readonly DroppedFile[]): DataSource {
+  const byPath = new Map(dropped.map((entry) => [entry.path, entry.file]));
+
+  const files: ManifestFile[] = dropped.map(({ file, path }) => {
+    const segments = path.split('/');
+    // `February_10/name.nakama-0` -> day `February_10`. A file dropped without a
+    // parent directory lands under a single synthetic day.
+    const day = segments.length > 1 ? segments[segments.length - 2]! : 'dropped';
+    // Files are `<userId>_<matchId>.nakama-N`; a numeric userId means a bot.
+    // Parity with the manifest only: classification actually reads user_id from
+    // the parquet contents.
+    const userId = (segments[segments.length - 1] ?? '').split('_')[0] ?? '';
+    const isBot = userId.length > 0 && !Number.isNaN(Number(userId));
+    return { p: path, d: day, s: file.size, b: isBot ? 1 : 0 };
+  });
+
+  return {
+    label: 'dropped files',
+    files,
+    days: [...new Set(files.map((file) => file.d))].sort(),
+    // A local read is always complete, so there is nothing degraded about it.
+    degraded: false,
+    open: (file) => {
+      const handle = byPath.get(file.p);
+      if (!handle) throw new Error(`no dropped file for ${file.p}`);
+      return bufferFromFile(handle);
+    },
+  };
+}
+
 function toMillis(value: unknown): number {
   if (value instanceof Date) return value.getTime();
   if (typeof value === 'bigint') return Number(value);
@@ -300,7 +402,7 @@ function toJourney(rows: ParquetRow[], file: ManifestFile): Journey | { reason: 
 }
 
 /**
- * Loads every journey in the dataset.
+ * Loads every journey the source describes.
  *
  * `onProgress` drives the progress bar: a cold load touches over a thousand
  * files and would otherwise look like a hang.
@@ -309,7 +411,6 @@ export async function loadDataset(
   onProgress: (progress: LoadProgress) => void,
 ): Promise<LoadResult> {
   const started = performance.now();
-  const useCache = canUseCacheApi();
 
   const report = (patch: Partial<LoadProgress>): void => {
     onProgress({
@@ -324,31 +425,40 @@ export async function loadDataset(
     });
   };
 
-  report({ phase: 'manifest' });
-  const manifest = await fetchManifest();
+  const source = await bundledSource(report);
+  return loadFrom(source, started, report);
+}
 
-  const sample = manifest.files[0];
-  let ranged = false;
-  if (sample) {
-    report({
-      phase: 'probing',
-      total: manifest.totalFiles,
-      totalBytes: manifest.totalBytes,
-    });
-    ranged = await probeRangeSupport(sample);
-  }
+/**
+ * Parses and indexes a {@link DataSource}.
+ *
+ * `started` is captured before the manifest fetch so that switching to a local
+ * source reports a sensible elapsed time rather than an instant.
+ */
+export async function loadFrom(
+  source: DataSource,
+  started: number,
+  report: (patch: Partial<LoadProgress>) => void,
+): Promise<LoadResult> {
+  const totalBytes = source.files.reduce((sum, file) => sum + file.s, 0);
+
+  report({
+    total: source.files.length,
+    totalBytes,
+    degraded: source.degraded,
+  });
 
   let loaded = 0;
   let bytesLoaded = 0;
   let failed = 0;
   const failures: string[] = [];
 
-  const parsed = await pool(manifest.files, FETCH_CONCURRENCY, async (file) => {
-    const buffer = makeBuffer(assetUrl(`data/${file.p}`), file.s, { cache: useCache, ranged });
+  const parsed = await pool(source.files, FETCH_CONCURRENCY, async (file) => {
+    const buffer = source.open(file);
     const rows = await parquetReadObjects({ file: buffer, columns: [...COLUMNS] });
     loaded++;
     bytesLoaded += file.s;
-    report({ loaded, bytesLoaded, degraded: !ranged });
+    report({ loaded, bytesLoaded, degraded: source.degraded });
     return toJourney(rows, file);
   });
 
@@ -362,7 +472,7 @@ export async function loadDataset(
     }
   }
 
-  report({ phase: 'indexing', loaded, bytesLoaded, degraded: !ranged });
+  report({ phase: 'indexing', loaded, bytesLoaded, degraded: source.degraded });
 
   if (failures.length) {
     console.warn(`[clarity] skipped ${failed} parquet file(s):`, failures);
@@ -370,19 +480,19 @@ export async function loadDataset(
 
   const maps = [...new Set(journeys.map((j) => j.mapId))].sort();
 
-  report({ phase: 'done', loaded, bytesLoaded, degraded: !ranged });
+  report({ phase: 'done', loaded, bytesLoaded, degraded: source.degraded });
 
   return {
     journeys,
-    days: manifest.days,
+    days: [...source.days],
     maps,
     stats: {
-      totalFiles: manifest.totalFiles,
+      totalFiles: source.files.length,
       parsedFiles: journeys.length,
       failedFiles: failed,
       totalRows: journeys.reduce((sum, j) => sum + j.x.length, 0),
       bytes: bytesLoaded,
-      degraded: !ranged,
+      degraded: source.degraded,
       loadMs: performance.now() - started,
     },
   };

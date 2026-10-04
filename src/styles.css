@@ -50,6 +50,12 @@ select {
   display: grid;
   place-items: center;
   background: radial-gradient(circle at 50% 40%, #0b1220, #05070d 70%);
+  /* Kept in the DOM so a dropped dataset can reuse the same progress UI. */
+  z-index: 30;
+}
+
+.boot.is-hidden {
+  display: none;
 }
 
 .boot__card {
@@ -238,6 +244,25 @@ select {
   color: var(--text-dim);
 }
 
+/* Label and value on one line, control underneath. */
+.field__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.field__head .field__label {
+  margin-bottom: 0;
+}
+
+.field__value {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 .field select,
 .field input[type='search'] {
   width: 100%;
@@ -397,20 +422,57 @@ select {
   z-index: 3;
 }
 
-.overlay--tl {
-  top: 12px;
-  left: 12px;
-}
-.overlay--tr {
-  top: 12px;
-  right: 12px;
-}
 .overlay--bl {
   bottom: 12px;
   left: 12px;
 }
 
-.btn {
+/* Full-map prompt shown while every match on the map is overlaid (issue #4). */
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  /* Sits above the corner controls so the prompt is the only click target. */
+  z-index: 4;
+  background: rgba(5, 7, 13, 0.72);
+  backdrop-filter: blur(1.5px);
+}
+
+  display: none;
+}
+
+  max-width: 420px;
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(11, 18, 32, 0.96);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  text-align: center;
+}
+
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+  margin: 0 0 10px;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+  margin-top: 8px;
+  border-color: rgba(56, 189, 248, 0.6);
+  color: #e0f2fe;
+}
+
   padding: 6px 11px;
   border-radius: 6px;
   border: 1px solid var(--border);
@@ -421,12 +483,10 @@ select {
   backdrop-filter: blur(4px);
 }
 
-.btn:hover {
   border-color: var(--human);
   color: var(--text);
 }
 
-.btn[aria-pressed='true'] {
   border-color: var(--human);
   color: var(--text);
   background: #12263a;
@@ -560,6 +620,45 @@ select {
   font-family: var(--mono);
   font-size: 10px;
   color: var(--text-faint);
+}
+
+/* ---------- drag & drop dataset loading (issue #5) ---------- */
+
+.dropzone {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: none;
+  place-items: center;
+  background: rgba(5, 7, 13, 0.78);
+  backdrop-filter: blur(2px);
+}
+
+/* Hidden until a drag actually enters the window. */
+.dropzone.is-active {
+  display: grid;
+}
+
+.dropzone__card {
+  max-width: 460px;
+  padding: 28px 32px;
+  border: 2px dashed var(--accent);
+  border-radius: 14px;
+  background: rgba(11, 18, 32, 0.96);
+  text-align: center;
+}
+
+.dropzone__title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.dropzone__meta {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 /* ---------- responsive ---------- */

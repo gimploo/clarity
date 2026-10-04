@@ -4,7 +4,7 @@
  * The transform is deliberately two-stage: world -> normalised UV, then UV ->
  * whatever pixel rectangle the image is currently drawn into. Keeping UV as the
  * intermediate means the same code works for the source minimap, the downscaled
- * web asset, a high-DPI backing store, and a zoomed/panned viewport.
+ * web asset, a high-DPI backing store, and a letterboxed viewport.
  */
 import { MAPS } from './maps';
 import type { MapId } from './types';

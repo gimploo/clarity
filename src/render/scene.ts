@@ -3,7 +3,7 @@
  *
  * Deliberately a single canvas with a fixed layer order rather than stacked
  * elements. With up to ~61k visible points on one map, one canvas avoids DOM
- * churn and keeps pan/zoom at interactive rates.
+ * churn and keeps redraws at interactive rates.
  *
  *   1. minimap image   (letterboxed to the map aspect)
  *   2. heatmap overlay
@@ -30,9 +30,9 @@ export interface SceneInput {
   showStormDeaths: boolean;
   heatmap: HeatmapLayer;
   heatmapAlpha: number;
+  showPathsWithHeatmap: boolean;
   /** Playhead in match-relative ms. When null, the whole journey is drawn. */
   cursor: number | null;
-  selectedPlayer: string | null;
 }
 
 export interface HoverTarget {
@@ -50,6 +50,48 @@ const MARKER_VISIBLE: Record<MarkerKind, keyof SceneInput> = {
   death: 'showDeaths',
   stormDeath: 'showStormDeaths',
   loot: 'showLoot',
+};
+
+/**
+ * Event marker paint order, back to front.
+ *
+ * Loot is far denser than combat, so it goes down first and the rare, important
+ * markers survive on top. {@link Scene.drawMarkers} and {@link Scene.pick} both
+ * read this list: the marker painted last is the only one the user can actually
+ * see, so it is the only correct thing for a tooltip to describe.
+ */
+const MARKER_PAINT_ORDER: readonly MarkerKind[] = ['loot', 'kill', 'death', 'stormDeath'];
+
+/**
+ * Pick priority per kind. Positions score lowest because movement is drawn as a
+ * path beneath every marker.
+ */
+const KIND_PRIORITY: Record<MarkerKind | 'position', number> = (() => {
+  const priority = { position: 0 } as Record<MarkerKind | 'position', number>;
+  MARKER_PAINT_ORDER.forEach((kind, index) => {
+    priority[kind] = index + 1;
+  });
+  return priority;
+})();
+
+/** Extra grab area around a marker, in CSS pixels, on top of its drawn size. */
+const MARKER_GRAB_PADDING = 3;
+
+/**
+ * Per-kind hit radius in CSS pixels, derived from what is actually drawn.
+ *
+ * Using one flat radius for every kind meant a 3.5px loot square was hoverable
+ * from 10px away — roughly three times its visible size — while the cursor read
+ * as being over nothing.
+ */
+const HIT_RADIUS_PX: Record<MarkerKind | 'position', number> = {
+  loot: MARKER_STYLES.loot.size + MARKER_GRAB_PADDING,
+  kill: MARKER_STYLES.kill.size + MARKER_GRAB_PADDING,
+  death: MARKER_STYLES.death.size + MARKER_GRAB_PADDING,
+  stormDeath: MARKER_STYLES.stormDeath.size + MARKER_GRAB_PADDING,
+  // Movement has no marker of its own; this is a pure tolerance for finding the
+  // nearest subject along a path.
+  position: 10,
 };
 
 export class Scene {
@@ -139,20 +181,18 @@ export class Scene {
     ctx.save();
     ctx.beginPath();
     const fit = viewport.fitRect();
-    ctx.rect(
-      fit.x + viewport.panX,
-      fit.y + viewport.panY,
-      fit.w * viewport.zoom,
-      fit.h * viewport.zoom,
-    );
+    ctx.rect(fit.x, fit.y, fit.w, fit.h);
     ctx.clip();
 
-    this.drawPaths(input);
+    if (input.heatmap.mode() === 'none' || input.showPathsWithHeatmap) {
+      this.drawPaths(input);
+    }
     this.drawMarkers(input);
     ctx.restore();
 
-    // Drawn after the clip and border: a head sitting on the map edge should
-    // stay visible rather than being sliced in half.
+    // Outside the clip: a head sitting on the map edge should stay visible rather
+    // than being sliced in half. The border goes on top so heads read as being
+    // under the map frame.
     this.drawHeads(input);
     this.drawBorder();
   }
@@ -169,7 +209,7 @@ export class Scene {
 
     for (const head of this.heads(input)) {
       const point = viewport.project(head.u, head.v);
-      const isSelected = input.selectedPlayer === head.journey.userId;
+      const isSelected = null === head.journey.userId;
       const radius = isSelected ? 6 : 4;
 
       ctx.beginPath();
@@ -195,10 +235,10 @@ export class Scene {
     const { ctx, viewport } = this;
     const image = this.images.get(mapId);
     const rect = viewport.fitRect();
-    const x = rect.x + viewport.panX;
-    const y = rect.y + viewport.panY;
-    const w = rect.w * viewport.zoom;
-    const h = rect.h * viewport.zoom;
+    const x = rect.x;
+    const y = rect.y;
+    const w = rect.w;
+    const h = rect.h;
 
     if (!image || !image.complete || image.naturalWidth === 0) {
       ctx.fillStyle = '#0b1220';
@@ -232,7 +272,7 @@ export class Scene {
       if (journey.isBot && !input.showBots) continue;
       if (!journey.isBot && !input.showHumans) continue;
 
-      const isSelected = input.selectedPlayer === journey.userId;
+      const isSelected = null === journey.userId;
       const end = cursor === null ? journey.x.length : upperBound(journey.t, cursor);
 
       if (end < 2) continue;
@@ -271,11 +311,7 @@ export class Scene {
     const { ctx, viewport } = this;
     const config = MAPS[input.mapId];
 
-    // Loot is far denser than combat; drawing it first keeps rare, important
-    // markers (deaths, storm deaths) on top.
-    const order: MarkerKind[] = ['loot', 'kill', 'death', 'stormDeath'];
-
-    for (const kind of order) {
+    for (const kind of MARKER_PAINT_ORDER) {
       if (!input[MARKER_VISIBLE[kind]]) continue;
       const style = MARKER_STYLES[kind];
       const shape: MarkerShape = style.shape;
@@ -305,12 +341,7 @@ export class Scene {
     ctx.save();
     ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(
-      rect.x + viewport.panX + 0.5,
-      rect.y + viewport.panY + 0.5,
-      rect.w * viewport.zoom - 1,
-      rect.h * viewport.zoom - 1,
-    );
+    ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
     ctx.restore();
   }
 
@@ -339,28 +370,40 @@ export class Scene {
   }
 
   /**
-   * Finds the nearest visible marker within `radius` CSS pixels of a point.
+   * Finds the visible marker a cursor is actually pointing at.
    *
    * Runs on every pointermove over up to ~61k samples, so it deliberately does
-   * no allocation and no canvas work in the common case: candidates are rejected
-   * by comparing squared distance in UV space, and only the single winning hit is
-   * materialised. Transforming every point to pixels first would allocate 61k
-   * objects per mouse move and drop frames.
+   * no allocation and no canvas work: candidates are rejected by comparing
+   * squared distance and only the single winning hit is materialised.
+   * Transforming every point to pixels first would allocate 61k objects per mouse
+   * move and drop frames.
+   *
+   * Selection follows paint order, not raw proximity. Two things were wrong with
+   * a pure nearest-match:
+   *
+   *  - It ignored {@link MARKER_PAINT_ORDER}, so a loot square painted *under* a
+   *    death triangle could win. The tooltip then described a marker that was
+   *    completely hidden.
+   *  - It broke ties towards the first journey, while painting makes the last one
+   *    sit on top.
+   *
+   * Now the topmost marker containing the cursor wins, and distance only decides
+   * between candidates of the same kind, which are visually identical anyway.
+   *
+   * `radiusScale` widens every per-kind radius at once, which is how click
+   * selection stays more forgiving than hover without inventing a second table.
    */
-  pick(input: SceneInput, clientX: number, clientY: number, radius = 10): HoverTarget | null {
+  pick(input: SceneInput, clientX: number, clientY: number, radiusScale = 1): HoverTarget | null {
     const canvasRect = this.canvas.getBoundingClientRect();
     const mouse = this.viewport.unproject(clientX - canvasRect.left, clientY - canvasRect.top);
     const config = MAPS[input.mapId];
-
-    // Convert the pixel radius into UV so the rejection test needs no transform.
-    const fit = this.viewport.fitRect();
-    const ru = fit.w === 0 ? 0 : radius / (fit.w * this.viewport.zoom);
-    const rv = fit.h === 0 ? 0 : radius / (fit.h * this.viewport.zoom);
-    const r2 = Math.max(ru * ru, rv * rv);
+    const rect = this.viewport.fitRect();
 
     let bestJourney: Journey | null = null;
     let bestIndex = -1;
-    let bestDistance = r2;
+    let bestKind: MarkerKind | 'position' = 'position';
+    let bestPriority = -1;
+    let bestDistance = Infinity;
 
     for (const journey of input.journeys) {
       if (journey.isBot && !input.showBots) continue;
@@ -368,38 +411,51 @@ export class Scene {
 
       const n = journey.x.length;
       for (let i = 0; i < n; i++) {
-        const kind = markerKindFor(journey.e[i]!);
-        if (kind) {
-          if (!input[MARKER_VISIBLE[kind]]) continue;
+        const markerKind = markerKindFor(journey.e[i]!);
+        let kind: MarkerKind | 'position';
+        if (markerKind) {
+          if (!input[MARKER_VISIBLE[markerKind]]) continue;
+          kind = markerKind;
         } else if (input.cursor !== null) {
           // Movement samples are only hoverable in the static view, where the
           // whole path is drawn.
           continue;
+        } else {
+          kind = 'position';
         }
 
-        const u = (journey.x[i]! - config.originX) / config.scale;
-        const du = u - mouse.u;
-        if (du > ru || du < -ru) continue;
-        const v = (journey.z[i]! - config.originZ) / config.scale;
-        const dv = v - mouse.v;
-        if (dv > rv || dv < -rv) continue;
+        // Distance is measured in CSS pixels rather than UV so the grab area is
+        // a true circle regardless of the map's aspect ratio.
+        const du = (journey.x[i]! - config.originX) / config.scale - mouse.u;
+        const dv = (journey.z[i]! - config.originZ) / config.scale - mouse.v;
+        const dx = du * rect.w;
+        const dy = dv * rect.h;
+        const radius = HIT_RADIUS_PX[kind] * radiusScale;
+        const distance = dx * dx + dy * dy;
+        if (distance > radius * radius) continue;
 
-        const distance = du * du + dv * dv;
-        if (distance > bestDistance) continue;
+        const priority = KIND_PRIORITY[kind];
+        // `<=` on the distance so that an exact tie falls to the candidate visited
+        // last, which is the one painted on top. Iteration order here is journeys
+        // outer and samples inner, matching drawMarkers.
+        const better =
+          priority > bestPriority || (priority === bestPriority && distance <= bestDistance);
+        if (!better) continue;
 
+        bestPriority = priority;
         bestDistance = distance;
         bestJourney = journey;
         bestIndex = i;
+        bestKind = kind;
       }
     }
 
     if (!bestJourney || bestIndex < 0) return null;
 
-    const eventIndex = bestJourney.e[bestIndex]!;
     return {
       journey: bestJourney,
       index: bestIndex,
-      kind: markerKindFor(eventIndex) ?? 'position',
+      kind: bestKind,
       worldX: bestJourney.x[bestIndex]!,
       worldZ: bestJourney.z[bestIndex]!,
       t: bestJourney.t[bestIndex]!,

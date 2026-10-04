@@ -70,8 +70,8 @@ single dominant western anchor rather than a centre-weighted one, which reads li
 one POI the rotation orbits rather than a map that is uniformly contested.
 
 **How to use it.** Pick a map, leave the filter at "All matches", turn off
-**Humans** and **Bots** so nothing is drawn on top, then use **Zoom to data** and
-pan. Empty region is unbuilt space.
+**Humans** and **Bots** so nothing is drawn on top, and read the empty region
+against the terrain. Empty region is unbuilt space.
 
 ---
 

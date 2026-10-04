@@ -63,6 +63,13 @@ export class App {
     root.replaceChildren(this.layout());
 
     this.store.subscribe(() => this.render());
+    // Opacity gets its own path: it fires on every pixel of slider travel and
+    // cannot change a filter, a count or the tab badges, so it must not trigger
+    // a full panel rebuild (issue #2).
+    this.store.onAlpha((alpha) => {
+      this.sidebar.setAlpha(alpha);
+      this.requestRender();
+    });
     this.bindCanvas(canvas);
     this.bindKeyboard();
 
@@ -116,50 +123,11 @@ export class App {
       this.statHost,
     );
 
-    this.stage.append(
-      el('div', { class: 'overlay overlay--tr' }, this.zoomButton('+', 1.4), this.zoomButton('−', 1 / 1.4), this.resetButton()),
-      el('div', { class: 'overlay overlay--tl' }, this.fitDataButton()),
+this.stage.append(
       el('div', { class: 'overlay overlay--bl' }, this.clearSelectionButton()),
     );
 
     return el('div', { class: 'app' }, topbar, el('div', { class: 'main' }, this.sidebar.element, this.stage), this.timeline.element);
-  }
-
-  private zoomButton(label: string, factor: number): HTMLElement {
-    return el(
-      'button',
-      {
-        class: 'btn',
-        type: 'button',
-        onclick: () => {
-          const rect = this.canvasHost.getBoundingClientRect();
-          this.scene.view.zoomAt(factor, rect.width / 2, rect.height / 2);
-          this.requestRender();
-        },
-      },
-      label,
-    );
-  }
-
-  private resetButton(): HTMLElement {
-    return el(
-      'button',
-      { class: 'btn', type: 'button', onclick: () => this.scene.view.reset() },
-      'Reset view',
-    );
-  }
-
-  private fitDataButton(): HTMLElement {
-    return el(
-      'button',
-      {
-        class: 'btn',
-        type: 'button',
-        title: 'Zoom to the bounding box of the current selection',
-        onclick: () => this.fitToData(),
-      },
-      'Zoom to data',
-    );
   }
 
   private clearSelectionButton(): HTMLElement {
@@ -194,96 +162,21 @@ export class App {
     this.requestRender();
   }
 
-  /** Frames the observed UV extent of the current selection. */
-  private fitToData(): void {
-    const { filters } = this.store.get();
-    const journeys = this.selection();
-    const config = MAPS[filters.mapId];
-
-    let minU = Infinity;
-    let maxU = -Infinity;
-    let minV = Infinity;
-    let maxV = -Infinity;
-
-    for (const journey of journeys) {
-      for (let i = 0; i < journey.x.length; i++) {
-        const u = (journey.x[i]! - config.originX) / config.scale;
-        const v = (journey.z[i]! - config.originZ) / config.scale;
-        if (u < minU) minU = u;
-        if (u > maxU) maxU = u;
-        if (v < minV) minV = v;
-        if (v > maxV) maxV = v;
-      }
-    }
-
-    if (!Number.isFinite(minU)) {
-      // Nothing selected: fall back to the whole map.
-      this.scene.view.reset();
-    } else {
-      this.scene.view.fitToUv(minU, maxU, minV, maxV);
-    }
-    this.requestRender();
-  }
-
   // ---- canvas interaction --------------------------------------------------
 
   private bindCanvas(canvas: HTMLCanvasElement): void {
-    let dragging = false;
-    let dragged = false;
-    let lastX = 0;
-    let lastY = 0;
-    let pointerId: number | null = null;
-
-    canvas.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) return;
-      dragging = true;
-      dragged = false;
-      lastX = event.clientX;
-      lastY = event.clientY;
-      pointerId = event.pointerId;
-      canvas.setPointerCapture(event.pointerId);
-    });
-
+    // There is no zoom or pan (issue #3), so a pointer gesture has nothing to drag
+    // and every press is a selection.
     canvas.addEventListener('pointermove', (event) => {
-      if (dragging && pointerId === event.pointerId) {
-        const dx = event.clientX - lastX;
-        const dy = event.clientY - lastY;
-        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) dragged = true;
-        lastX = event.clientX;
-        lastY = event.clientY;
-        this.scene.view.panBy(dx, dy);
-        this.tooltip.hide();
-        this.requestRender();
-        return;
-      }
       this.updateHover(event);
     });
 
-    const endDrag = (event: PointerEvent) => {
-      if (pointerId !== event.pointerId) return;
-      dragging = false;
-      pointerId = null;
-      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    canvas.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      this.selectAt(event);
+    });
 
-      // A click that did not pan selects whatever is under the cursor.
-      if (!dragged) this.selectAt(event);
-    };
-
-    canvas.addEventListener('pointerup', endDrag);
-    canvas.addEventListener('pointercancel', endDrag);
     canvas.addEventListener('pointerleave', () => this.tooltip.hide());
-
-    canvas.addEventListener(
-      'wheel',
-      (event) => {
-        event.preventDefault();
-        const rect = canvas.getBoundingClientRect();
-        const factor = Math.exp(-event.deltaY * 0.0015);
-        this.scene.view.zoomAt(factor, event.clientX - rect.left, event.clientY - rect.top);
-        this.requestRender();
-      },
-      { passive: false },
-    );
   }
 
   private sceneInput(): SceneInput {
@@ -299,8 +192,8 @@ export class App {
       showStormDeaths: state.filters.showStormDeaths,
       heatmap: this.heatmap,
       heatmapAlpha: state.filters.heatmap === 'none' ? 0 : state.heatmapAlpha,
+      showPathsWithHeatmap: state.showPathsWithHeatmap,
       cursor: state.playback.cursor,
-      selectedPlayer: state.selectedPlayer,
     };
   }
 
@@ -318,7 +211,8 @@ export class App {
   /** Selects a player. Clicking the same player again clears the selection. */
   private selectAt(event: PointerEvent): void {
     const input = this.sceneInput();
-    const target = this.scene.pick(input, event.clientX, event.clientY, 14);
+    // A click is a coarser gesture than a hover, so it gets a wider grab area.
+    const target = this.scene.pick(input, event.clientX, event.clientY, 1.4);
     if (!target) return;
 
     const userId = target.journey.userId;
@@ -346,19 +240,6 @@ export class App {
         case 'Escape':
           this.store.update({ selectedPlayer: null });
           break;
-        case '0':
-          this.scene.view.reset();
-          this.requestRender();
-          break;
-        case '+':
-        case '=':
-          this.scene.view.zoomAt(1.4, this.canvasHost.clientWidth / 2, this.canvasHost.clientHeight / 2);
-          this.requestRender();
-          break;
-        case '-':
-          this.scene.view.zoomAt(1 / 1.4, this.canvasHost.clientWidth / 2, this.canvasHost.clientHeight / 2);
-          this.requestRender();
-          break;
       }
     });
   }
@@ -382,8 +263,6 @@ export class App {
     const { filters } = this.store.get();
     if (filters.mapId !== this.lastMap) {
       this.lastMap = filters.mapId;
-      // Zoom/pan are in CSS pixels, so they are meaningless across aspect changes.
-      this.scene.view.reset();
       this.scene.resize(filters.mapId);
       void this.ensureMinimap(filters.mapId);
     }
@@ -403,7 +282,7 @@ export class App {
    * Rebuilds the heatmap only when the inputs that affect it have changed.
    *
    * Accumulating up to ~60k samples is fast but not free, and this would otherwise
-   * run on every pan, zoom and playback frame.
+   * run on every playback frame.
    */
   private updateHeatmap(journeys: Journey[], mode: HeatmapMode): void {
     const { filters } = this.store.get();

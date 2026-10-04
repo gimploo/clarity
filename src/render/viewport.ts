@@ -1,8 +1,12 @@
 /**
- * Maps normalised minimap UV to canvas pixels, with fit, zoom and pan.
+ * Maps normalised minimap UV to canvas pixels, letterboxed to fit.
  *
  * Keeping this separate from the drawing code means hit-testing (mouse -> world
  * coordinate) is the exact inverse of rendering, and neither knows about DPR.
+ *
+ * There is deliberately no zoom or pan (issue #3): the whole minimap is always
+ * visible, so `fitRect()` is the only transform and `project`/`unproject` are
+ * exact inverses of each other.
  */
 
 export interface Rect {
@@ -23,13 +27,6 @@ export class Viewport {
   height = 0;
   /** width / height of the minimap image. */
   mapAspect = 1;
-  zoom = 1;
-  /** Pan in CSS pixels. */
-  panX = 0;
-  panY = 0;
-
-  static readonly MIN_ZOOM = 1;
-  static readonly MAX_ZOOM = 24;
 
   resize(width: number, height: number, mapAspect: number): void {
     this.width = width;
@@ -37,7 +34,7 @@ export class Viewport {
     this.mapAspect = mapAspect;
   }
 
-  /** The rect the minimap occupies at zoom 1 with no pan, letterboxed to fit. */
+  /** The rect the minimap occupies, letterboxed to fit and centred. */
   fitRect(): Rect {
     const canvasAspect = this.width / this.height;
     let w: number;
@@ -55,29 +52,18 @@ export class Viewport {
   /** UV -> canvas pixels. V is flipped so world north is up. */
   project(u: number, v: number): Point {
     const rect = this.fitRect();
-    const baseX = rect.x + u * rect.w;
-    const baseY = rect.y + (1 - v) * rect.h;
-
-    const cx = this.width / 2;
-    const cy = this.height / 2;
     return {
-      x: cx + (baseX - cx) * this.zoom + this.panX,
-      y: cy + (baseY - cy) * this.zoom + this.panY,
+      x: rect.x + u * rect.w,
+      y: rect.y + (1 - v) * rect.h,
     };
   }
 
   /** Canvas pixels -> UV. Inverse of {@link project}. */
   unproject(x: number, y: number): { u: number; v: number } {
     const rect = this.fitRect();
-    const cx = this.width / 2;
-    const cy = this.height / 2;
-
-    const baseX = (x - cx - this.panX) / this.zoom + cx;
-    const baseY = (y - cy - this.panY) / this.zoom + cy;
-
     return {
-      u: rect.w === 0 ? 0 : (baseX - rect.x) / rect.w,
-      v: rect.h === 0 ? 0 : 1 - (baseY - rect.y) / rect.h,
+      u: rect.w === 0 ? 0 : (x - rect.x) / rect.w,
+      v: rect.h === 0 ? 0 : 1 - (y - rect.y) / rect.h,
     };
   }
 
@@ -87,52 +73,4 @@ export class Viewport {
     const v = (z - mapId.originZ) / mapId.scale;
     return this.project(u, v);
   }
-
-  zoomAt(factor: number, anchorX: number, anchorY: number): void {
-    const next = clamp(this.zoom * factor, Viewport.MIN_ZOOM, Viewport.MAX_ZOOM);
-    if (next === this.zoom) return;
-
-    // Keep the point under the cursor fixed while zooming.
-    const before = this.unproject(anchorX, anchorY);
-    this.zoom = next;
-    const after = this.unproject(anchorX, anchorY);
-    const rect = this.fitRect();
-    this.panX += (after.u - before.u) * rect.w * this.zoom;
-    this.panY -= (after.v - before.v) * rect.h * this.zoom;
-  }
-
-  panBy(dx: number, dy: number): void {
-    this.panX += dx;
-    this.panY += dy;
-  }
-
-  reset(): void {
-    this.zoom = 1;
-    this.panX = 0;
-    this.panY = 0;
-  }
-
-  /**
-   * Frames a UV bounding box, e.g. to zoom to where the data actually is.
-   * Falls back to the full map when the box is degenerate or off-image.
-   */
-  fitToUv(minU: number, maxU: number, minV: number, maxV: number, padding = 0.08): void {
-    const rect = this.fitRect();
-    const spanU = Math.max(maxU - minU, 1e-4);
-    const spanV = Math.max(maxV - minV, 1e-4);
-    const zoom = clamp(
-      Math.min(rect.w / (spanU * rect.w * (1 + padding * 2)), rect.h / (spanV * rect.h * (1 + padding * 2))),
-      Viewport.MIN_ZOOM,
-      Viewport.MAX_ZOOM,
-    );
-
-    this.zoom = zoom;
-    const centre = this.project((minU + maxU) / 2, (minV + maxV) / 2);
-    this.panX = this.width / 2 - centre.x;
-    this.panY = this.height / 2 - centre.y;
-  }
-}
-
-export function clamp(value: number, min: number, max: number): number {
-  return value < min ? min : value > max ? max : value;
 }
