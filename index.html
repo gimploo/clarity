@@ -1,24 +1,26 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hello World</title>
-    <style>
-        body {
-            font-family: system-ui, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        h1 { font-size: 3rem; }
-    </style>
-</head>
-<body>
-    <h1>Hello World!</h1>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clarity — LILA BLACK Player Journey Explorer</title>
+    <meta
+      name="description"
+      content="Visualisation of LILA BLACK player telemetry: journeys, kills, deaths, loot and heatmaps per map."
+    />
+    <link rel="preload" as="fetch" href="data/manifest.json" crossorigin />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <div class="boot" id="boot">
+        <div class="boot__card">
+          <h1 class="boot__title">Clarity</h1>
+          <p class="boot__subtitle">LILA BLACK player journey explorer</p>
+          <div class="boot__bar"><div class="boot__fill" id="boot-fill"></div></div>
+          <p class="boot__status" id="boot-status">Starting…</p>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

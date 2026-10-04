@@ -1,0 +1,31 @@
+{
+  "name": "clarity",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "LILA BLACK player journey visualization tool for the Level Design team",
+  "scripts": {
+    "prepare:assets": "tsx scripts/prepare-assets.ts",
+    "verify:mapping": "tsx scripts/verify-mapping.ts",
+    "verify:loader": "tsx scripts/verify-loader.ts",
+    "analyze": "tsx scripts/analyze-insights.ts",
+    "verify": "npm run typecheck && npm run test && npm run verify:loader && npm run verify:mapping",
+    "dev": "npm run prepare:assets && vite",
+    "build": "npm run prepare:assets && npm run verify:loader && tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "hyparquet": "^1.31.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "happy-dom": "^20.14.5",
+    "sharp": "^0.35.5",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.11"
+  }
+}

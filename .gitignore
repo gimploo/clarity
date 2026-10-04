@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.vite/
+
+# Generated from res/ at build time by scripts/prepare-assets.ts
+public/minimaps/
+public/data/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.local
+.idea/
+.vscode/
