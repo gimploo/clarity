@@ -38,7 +38,7 @@ const MARKER_TOGGLE: Record<MarkerKind, 'showKills' | 'showDeaths' | 'showLoot' 
 
 export class Sidebar {
   readonly element: HTMLElement;
-  private readonly dataset: Dataset;
+  private dataset: Dataset;
   private readonly store: Store;
 
   private daysHost!: HTMLElement;
@@ -65,6 +65,11 @@ export class Sidebar {
     this.store = store;
     this.element = el('aside', { class: 'sidebar' });
     this.build();
+  }
+
+  updateDataset(dataset: Dataset): void {
+    this.dataset = dataset;
+    this.render();
   }
 
   private build(): void {

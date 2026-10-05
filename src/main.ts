@@ -143,6 +143,29 @@ function loadDropped(files: DroppedFile[]): void {
       )} samples…`;
 
       try {
+        if (currentApp) {
+          const { mergeDatasets } = require('./data/dataset') as typeof import('./data/dataset');
+          const merged = mergeDatasets(
+            currentApp.getDataset(),
+            result.journeys,
+            result.days,
+            result.maps,
+          );
+          const oldStats = currentApp.getLoadStats();
+          const mergedStats = {
+            ...result.stats,
+            parsedFiles: oldStats.parsedFiles + result.stats.parsedFiles,
+            failedFiles: oldStats.failedFiles + result.stats.failedFiles,
+            totalRows: merged.totals.rows,
+            bytes: (oldStats.bytes || 0) + (result.stats.bytes || 0),
+            loadMs: oldStats.loadMs + result.stats.loadMs,
+            degraded: oldStats.degraded || result.stats.degraded,
+          };
+          currentApp.updateDataset(merged, mergedStats);
+          hideBoot();
+          return;
+        }
+
         mount(result.journeys, result.days, result.maps, result.stats, 'dropped dataset');
       } catch (error) {
         fail(error);

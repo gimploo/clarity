@@ -23,8 +23,8 @@ import { Timeline } from './timeline';
 import { Tooltip } from './tooltip';
 
 export class App {
-  private readonly dataset: Dataset;
-  private readonly loadStats: LoadStats;
+  private dataset: Dataset;
+  private loadStats: LoadStats;
   private readonly store: Store;
   private readonly scene: Scene;
   private readonly sidebar: Sidebar;
@@ -103,6 +103,23 @@ export class App {
     return new Promise((resolve) => {
       requestAnimationFrame(() => resolve());
     });
+  }
+
+  getDataset(): Dataset {
+    return this.dataset;
+  }
+
+  getLoadStats(): LoadStats {
+    return this.loadStats;
+  }
+
+  updateDataset(newDataset: Dataset, newStats?: Partial<LoadStats>): void {
+    this.dataset = newDataset;
+    if (newStats) {
+      this.loadStats = { ...this.loadStats, ...newStats };
+    }
+    this.sidebar.updateDataset(newDataset);
+    this.render();
   }
 
   dispose(): void {

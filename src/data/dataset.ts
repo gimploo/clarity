@@ -240,3 +240,21 @@ export function playersFor(dataset: Dataset, mapId: MapId, days: string[]): Play
   }
   return [...seen.values()].sort((a, b) => (a.userId < b.userId ? -1 : 1));
 }
+
+export function mergeDatasets(existing: Dataset, incomingJourneys: Journey[], incomingDays: string[], incomingMaps: MapId[]): Dataset {
+  const combinedJourneys = [...existing.journeys, ...incomingJourneys];
+  const daySet = new Set<string>(existing.days);
+  for (const day of incomingDays) daySet.add(day);
+  const combinedDays = [...daySet].sort();
+  const mapSet = new Map<MapId, number>();
+  for (let i = 0; i < existing.maps.length; i++) {
+    mapSet.set(existing.maps[i], i);
+  }
+  for (let i = 0; i < incomingMaps.length; i++) {
+    if (!mapSet.has(incomingMaps[i])) {
+      mapSet.set(incomingMaps[i], existing.maps.length + mapSet.size);
+    }
+  }
+  const combinedMaps = [...mapSet.keys()].sort((a, b) => (mapSet.get(a) ?? 0) - (mapSet.get(b) ?? 0));
+  return buildDataset(combinedJourneys, combinedDays, combinedMaps);
+}
