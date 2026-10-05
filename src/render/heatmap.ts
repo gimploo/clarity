@@ -53,7 +53,6 @@ export class HeatmapLayer {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private signature = '';
-  private currentMode: HeatmapMode = 'none';
   /**
    * Peak grid value, computed once per {@link build}.
    *
@@ -80,7 +79,6 @@ export class HeatmapLayer {
   build(journeys: Journey[], mode: HeatmapMode, signature: string): void {
     this.signature = signature;
     this.grid.fill(0);
-    this.currentMode = mode;
 
     if (mode !== 'none' && journeys.length > 0) {
       for (const journey of journeys) {
@@ -161,11 +159,6 @@ export class HeatmapLayer {
     }
 
     this.ctx.putImageData(image, 0, 0);
-  }
-
-  /** Current heatmap mode. */
-  mode(): HeatmapMode {
-    return this.currentMode;
   }
 
   /** Peak grid value, for the legend scale. */

@@ -89,7 +89,7 @@ export function buildDataset(journeys: Journey[], days: string[], maps: MapId[])
     }
   }
   for (const journey of journeys) {
-rebase(journey, matchStart.get(journey.matchId) ?? 0);
+    rebase(journey, matchStart.get(journey.matchId) ?? 0);
   }
 
   // Pass 2: indexes and aggregates.

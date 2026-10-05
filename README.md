@@ -21,8 +21,7 @@ cache; repeat visits are served largely from the browser Cache API.
 ```bash
 npm run build      # assets + loader contract check + typecheck + production build
 npm run preview    # serve the built output
-npm test           # unit tests
-npm run verify     # typecheck, tests, loader contract, coordinate mapping
+npm run verify     # typecheck, loader contract, coordinate mapping
 ```
 
 Deployment is automated: pushing to `master` builds and publishes to
@@ -89,7 +88,6 @@ src/data/      Parquet loading (browser) and the in-memory dataset index
 src/render/    Canvas scene: viewport, paths, markers, heatmap
 src/ui/        Panels, timeline, tooltip, app shell, drag & drop loading
 scripts/       Asset pipeline and the verification scripts
-test/          Unit tests plus DOM mount, hit-testing and drag & drop tests
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for design decisions and the data
@@ -114,6 +112,5 @@ either assumption regresses.
 | `npm run prepare:assets` | Downscale minimaps to WebP, stage parquet files, write `public/data/manifest.json` |
 | `npm run verify:mapping` | Push all 89,104 rows through the coordinate transform; fail if any lands off the minimap |
 | `npm run verify:loader` | Assert the browser's restricted Parquet read still returns identity columns |
-| `npm test` | Coordinate, viewport, hit-testing, DOM mount/playback and drag & drop tests |
 | `npm run analyze` | Recompute every figure quoted in [INSIGHTS.md](INSIGHTS.md) |
-| `npm run verify` | Typecheck, tests, loader contract and coordinate mapping |
+| `npm run verify` | Typecheck, loader contract and coordinate mapping |

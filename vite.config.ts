@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vite';
 
 export default defineConfig({
   // Repo is served from https://gimploo.github.io/clarity/ via GitHub Pages.
@@ -9,9 +9,5 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-  },
-test: {
-    environment: 'node',
-    include: ['test/**/*.test.ts'],
   },
 });

@@ -117,30 +117,17 @@ export class App {
       'header',
       { class: 'topbar' },
       el('span', { class: 'topbar__brand' }, 'Clarity'),
-      el('span', { class: 'topbar__tag' }, 'LILA BLACK player journeys'),
+      el('span', { class: 'topbar__tag' }, 'Player journey dashboard'),
       this.tabHost,
       el('div', { class: 'topbar__spacer' }),
       this.statHost,
     );
 
-this.stage.append(
-      el('div', { class: 'overlay overlay--bl' }, this.clearSelectionButton()),
-    );
 
     return el('div', { class: 'app' }, topbar, el('div', { class: 'main' }, this.sidebar.element, this.stage), this.timeline.element);
   }
 
-  private clearSelectionButton(): HTMLElement {
-    return el(
-      'button',
-      {
-        class: 'btn',
-        type: 'button',
-        onclick: () => this.store.update({ selectedPlayer: null }),
-      },
-      'Clear selection',
-    );
-  }
+
 
   // ---- selection -----------------------------------------------------------
 
@@ -192,7 +179,7 @@ this.stage.append(
       showStormDeaths: state.filters.showStormDeaths,
       heatmap: this.heatmap,
       heatmapAlpha: state.filters.heatmap === 'none' ? 0 : state.heatmapAlpha,
-      showPathsWithHeatmap: state.showPathsWithHeatmap,
+      showPaths: state.showPaths,
       cursor: state.playback.cursor,
     };
   }

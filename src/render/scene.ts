@@ -30,7 +30,7 @@ export interface SceneInput {
   showStormDeaths: boolean;
   heatmap: HeatmapLayer;
   heatmapAlpha: number;
-  showPathsWithHeatmap: boolean;
+  showPaths: boolean;
   /** Playhead in match-relative ms. When null, the whole journey is drawn. */
   cursor: number | null;
 }
@@ -184,7 +184,7 @@ export class Scene {
     ctx.rect(fit.x, fit.y, fit.w, fit.h);
     ctx.clip();
 
-    if (input.heatmap.mode() === 'none' || input.showPathsWithHeatmap) {
+    if (input.showPaths) {
       this.drawPaths(input);
     }
     this.drawMarkers(input);

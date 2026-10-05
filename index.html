@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Clarity — LILA BLACK Player Journey Explorer</title>
+    <title>Clarity — Player Journey Explorer</title>
     <meta
       name="description"
       content="Visualisation of LILA BLACK player telemetry: journeys, kills, deaths, loot and heatmaps per map."
@@ -11,14 +11,15 @@
     <link rel="preload" as="fetch" href="data/manifest.json" crossorigin />
   </head>
   <body>
-    <div id="app" class="app">
-      <div class="boot" id="boot">
-        <div class="boot__card">
-          <h1 class="boot__title">Clarity</h1>
-          <p class="boot__subtitle">LILA BLACK player journey explorer</p>
-          <div class="boot__bar"><div class="boot__fill" id="boot-fill"></div></div>
-          <p class="boot__status" id="boot-status">Starting…</p>
-        </div>
+    <div id="app" class="app"></div>
+    <!-- Outside #app on purpose: mounting replaces #app's children, and the boot
+         overlay has to survive that so a dropped dataset can reuse it. -->
+    <div class="boot" id="boot">
+      <div class="boot__card">
+        <h1 class="boot__title">Clarity</h1>
+        <p class="boot__subtitle">Player journey explorer</p>
+        <div class="boot__bar"><div class="boot__fill" id="boot-fill"></div></div>
+        <p class="boot__status" id="boot-status">Starting…</p>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

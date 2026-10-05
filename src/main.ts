@@ -108,6 +108,7 @@ function mount(
   stats: LoadStats,
   sourceLabel: string,
 ): void {
+
   const dataset = buildDataset(journeys, days, maps);
   if (dataset.journeys.length === 0) {
     throw new Error('No parquet files could be parsed from that dataset.');
@@ -140,7 +141,18 @@ function loadDropped(files: DroppedFile[]): void {
       qs<HTMLElement>('#boot-status').textContent = `Indexing ${num(
         result.stats.totalRows,
       )} samples…`;
-      mount(result.journeys, result.days, result.maps, result.stats, 'dropped files');
+
+      try {
+        mount(result.journeys, result.days, result.maps, result.stats, 'dropped dataset');
+      } catch (error) {
+        fail(error);
+        return;
+      }
+
+      qs<HTMLElement>('#boot-fill').style.width = '100%';
+      qs<HTMLElement>('#boot-status').textContent = `Ready — ${num(
+        result.stats.parsedFiles,
+      )} files in ${(result.stats.loadMs / 1000).toFixed(1)}s`;
     },
     fail,
   );
@@ -173,9 +185,11 @@ function boot(): void {
   dropzoneTeardown ??= enableDropzone(document.body, {
     onFiles: loadDropped,
     onError: (message) => {
-      // A bad drop must never disturb a working session, so it is only logged.
-      console.warn('[clarity] drop rejected:', message);
-      if (!currentApp) fail(new Error(message));
+      // Surface it rather than only logging: a silent rejection is
+      // indistinguishable from the drop feature being broken. The overlay is the
+      // app's existing error surface, and the running app stays mounted beneath
+      // it until the next successful load.
+      fail(new Error(message));
     },
   });
 }

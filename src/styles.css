@@ -56,6 +56,9 @@ select {
 
 .boot.is-hidden {
   display: none;
+  /* The overlay fades out over 260ms; without this it would keep swallowing
+     clicks on the freshly mounted app underneath. */
+  pointer-events: none;
 }
 
 .boot__card {
@@ -413,66 +416,9 @@ select {
   margin: 6px 0 0;
 }
 
-/* ---------- stage overlays ---------- */
+/* ---------- buttons ---------- */
 
-.overlay {
-  position: absolute;
-  display: flex;
-  gap: 6px;
-  z-index: 3;
-}
-
-.overlay--bl {
-  bottom: 12px;
-  left: 12px;
-}
-
-/* Full-map prompt shown while every match on the map is overlaid (issue #4). */
-  inset: 0;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  /* Sits above the corner controls so the prompt is the only click target. */
-  z-index: 4;
-  background: rgba(5, 7, 13, 0.72);
-  backdrop-filter: blur(1.5px);
-}
-
-  display: none;
-}
-
-  max-width: 420px;
-  padding: 20px 22px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: rgba(11, 18, 32, 0.96);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-  text-align: center;
-}
-
-  margin: 0 0 6px;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-
-  margin: 0 0 10px;
-  font-size: 19px;
-  font-weight: 600;
-}
-
-  margin: 0 0 8px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-dim);
-}
-
-  margin-top: 8px;
-  border-color: rgba(56, 189, 248, 0.6);
-  color: #e0f2fe;
-}
-
+.btn {
   padding: 6px 11px;
   border-radius: 6px;
   border: 1px solid var(--border);
@@ -483,13 +429,21 @@ select {
   backdrop-filter: blur(4px);
 }
 
+.btn:hover {
   border-color: var(--human);
   color: var(--text);
 }
 
+.btn[aria-pressed='true'] {
   border-color: var(--human);
   color: var(--text);
   background: #12263a;
+}
+
+/* Play and Reset stay inert until exactly one match is selected. */
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .tooltip {

@@ -175,6 +175,8 @@ Ordering within the layers is deliberate:
   742 deaths; drawing the rare markers last keeps them visible.
 - Only movement samples become polyline vertices. Feeding marker rows into the
   line would spike it across the map.
+- The path layer is skipped entirely when *Show paths* is unchecked. The layer is
+  independent of the heatmap, so toggling one never changes what the other draws.
 
 ### Heatmap: bin in UV, paint once
 
@@ -234,8 +236,8 @@ The heatmap opacity slider had the same shape of bug (issue #2): it was dispatch
 as an ordinary filter change, so every `input` event during a drag rebuilt the
 sidebar, re-created every timeline tick and re-ran the whole render path. It now
 has its own store channel that updates two text nodes and schedules one frame, so
-dragging the slider touches nothing else. `test/app-smoke` pins the boundary:
-opacity changes must not replace sidebar DOM, while a real filter change must.
+dragging the slider touches nothing else. The boundary it must hold: opacity
+changes must not replace sidebar DOM, while a real filter change must.
 
 The event strip itself is a bonus: kills tick along the top edge of the scrubber,
 deaths along the bottom, so the shape of a fight is visible before pressing play.
@@ -275,26 +277,34 @@ Things the shipped data does not tell you, all verified rather than assumed:
 
 ## Verification
 
-Every claim in this document is enforced by a script that runs in CI:
+Every claim in this document is enforced by a script:
 
 | Script | Guards |
 | --- | --- |
 | `verify:mapping` | All 89,104 rows land inside their minimap's UV bounds |
 | `verify:loader` | A restricted column read still returns `map_id`/`match_id`/`user_id` |
-| `test/coordinates` | Coordinate transform, event semantics, filename id parsing |
-| `test/viewport` | Fit and letterboxing, projection round-trips, world-projection equivalence |
-| `test/scene-pick` | Hit radius, paint-order priority, tie direction, click tolerance |
-| `test/app-smoke` | Mounts a real `App` against a DOM and drives filters, map tabs, playback, opacity and the match prompt |
-| `test/dropzone` | Recursive folder walk, day-path recovery, reader batching, local slicing |
 | `analyze` | Recomputes every figure quoted in INSIGHTS.md |
 
 `verify:loader` and `verify:mapping` both exit non-zero on failure, and
 `npm run build` runs `verify:loader`, so the exact bug described above cannot
 regress into a deployed build.
 
-The mount smoke test exists because everything else missed a whole class of bug:
-typecheck finds no error in a bad DOM query, a subscription that never fires, or a
-throw inside a render path. Writing it immediately found two real defects — the
-panels were not populated until after the asynchronous minimap load resolved, and
-`start()` resolved before any frame had been painted, so the boot overlay could
-lift onto an empty canvas.
+### What typecheck does not catch
+
+Typecheck finds no error in a bad DOM query, a subscription that never fires, or a
+throw inside a render path — a whole class of bug that only shows up at runtime.
+Three such bugs have been fixed in this codebase, all found by driving the app
+rather than by reading it:
+
+- The panels were not populated until after the asynchronous minimap load
+  resolved, and `start()` resolved before any frame had been painted, so the boot
+  overlay could lift onto an empty canvas.
+- `showPaths` was renamed from `showPathsWithHeatmap` when the toggle moved from
+  the heatmap panel to the subjects panel, but the render gate kept the old
+  condition (`heatmap.mode() === 'none' || showPaths`). Since `'none'` is the
+  default, the checkbox was a no-op outside heatmap mode.
+- The boot overlay lived *inside* `#app`, which mounting replaces with
+  `replaceChildren()`. The first successful load therefore deleted `#boot`, and
+  every later folder drop threw on `qs('#boot')` inside a promise chain: the
+  files read fine and then nothing happened on screen. The overlay is now a
+  sibling of `#app`, since it has to outlive every mount.

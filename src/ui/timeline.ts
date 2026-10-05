@@ -52,7 +52,7 @@ export class Timeline {
     const startButton = el(
       'button',
       { class: 'btn', type: 'button', onclick: () => this.store.setPlayback({ cursor: 0 }) },
-      'Start',
+      'Reset',
     );
 
     this.durationSelect = el('select', {
@@ -89,7 +89,7 @@ export class Timeline {
     this.element = el(
       'footer',
       { class: 'timeline' },
-      el('div', { class: 'timeline__controls' }, this.playButton, startButton, this.durationSelect),
+      el('div', { class: 'timeline__controls' }, this.playButton, startButton),
       el('div', {}, this.track, this.meta),
       this.readout,
     );

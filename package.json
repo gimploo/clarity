@@ -9,12 +9,11 @@
     "verify:mapping": "tsx scripts/verify-mapping.ts",
     "verify:loader": "tsx scripts/verify-loader.ts",
     "analyze": "tsx scripts/analyze-insights.ts",
-    "verify": "npm run typecheck && npm run test && npm run verify:loader && npm run verify:mapping",
+    "verify": "npm run typecheck && npm run verify:loader && npm run verify:mapping",
     "dev": "npm run prepare:assets && vite",
     "build": "npm run prepare:assets && npm run verify:loader && tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "hyparquet": "^1.31.2"

@@ -194,7 +194,7 @@ export function enableDropzone(target: HTMLElement, options: DropzoneOptions): (
     const transfer = event.dataTransfer;
     if (!transfer) return;
 
-    void filesFromDrop(transfer).then(options.onFiles, (error: unknown) => {
+    filesFromDrop(transfer).then(options.onFiles, (error: unknown) => {
       options.onError(error instanceof Error ? error.message : String(error));
     });
   };

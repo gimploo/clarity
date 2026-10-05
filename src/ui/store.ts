@@ -13,8 +13,8 @@ export interface AppState {
   selectedPlayer: string | null;
   /** Heatmap overlay opacity, 0..1. */
   heatmapAlpha: number;
-  /** Show path lines even when a heatmap is active. */
-  showPathsWithHeatmap: boolean;
+  /** Draw journey polylines for every visible subject. */
+  showPaths: boolean;
   showMiniMap: boolean;
 }
 
@@ -54,7 +54,7 @@ export class Store {
       playback: initialPlayback(),
       selectedPlayer: null,
       heatmapAlpha: 0.75,
-      showPathsWithHeatmap: true,
+      showPaths: true,
       showMiniMap: true,
     };
   }

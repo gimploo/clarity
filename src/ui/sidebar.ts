@@ -232,7 +232,7 @@ export class Sidebar {
 
   private renderSubjects(): void {
     clear(this.subjectHost);
-    const { filters } = this.store.get();
+    const { filters, showPaths } = this.store.get();
     const visible = selectJourneys(this.dataset, filters);
 
     let humans = 0;
@@ -257,6 +257,17 @@ export class Sidebar {
         checked: filters.showBots,
         onChange: (checked) => this.store.setFilters({ showBots: checked }),
       }),
+      el(
+        'label',
+        { class: 'check' },
+        el('input', {
+          type: 'checkbox',
+          checked: showPaths,
+          onchange: (event: Event) =>
+            this.store.update({ showPaths: (event.target as HTMLInputElement).checked }),
+        }),
+        'Show paths',
+      ),
     );
   }
 
@@ -290,7 +301,7 @@ export class Sidebar {
 
   private renderHeatmap(): void {
     clear(this.heatmapHost);
-    const { filters, heatmapAlpha, showPathsWithHeatmap } = this.store.get();
+    const { filters, heatmapAlpha } = this.store.get();
 
     const select = el('select', {
       onchange: (event: Event) =>
@@ -302,18 +313,6 @@ export class Sidebar {
       select.append(option);
     }
     this.heatmapHost.append(el('label', { class: 'field' }, select));
-
-    const linesToggle = el('label', { class: 'check' },
-      el('input', {
-        type: 'checkbox',
-        checked: showPathsWithHeatmap,
-        onchange: (event: Event) =>
-          this.store.update({ showPathsWithHeatmap: (event.target as HTMLInputElement).checked }),
-      }),
-      el('span', { class: 'check__swatch', style: 'background: var(--text)' }),
-      'Show paths over heatmap',
-    );
-    this.heatmapHost.append(linesToggle);
 
     const slider = el('input', {
       type: 'range',
