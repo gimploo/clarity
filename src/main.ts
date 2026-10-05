@@ -11,11 +11,11 @@
 import './styles.css';
 import { loadDataset, loadFrom, localSource } from './data/loader';
 import type { DroppedFile, LoadProgress, LoadStats } from './data/loader';
-import { buildDataset } from './data/dataset';
 import type { Journey, MapId } from './core/types';
 import { App } from './ui/app';
 import { enableDropzone } from './ui/dropzone';
 import { el, num, qs } from './ui/dom';
+import { buildDataset, mergeDatasets } from './data/dataset';
 
 const PHASE_TEXT: Record<LoadProgress['phase'], string> = {
   manifest: 'Reading manifest…',
@@ -144,7 +144,6 @@ function loadDropped(files: DroppedFile[]): void {
 
       try {
         if (currentApp) {
-          const { mergeDatasets } = require('./data/dataset') as typeof import('./data/dataset');
           const merged = mergeDatasets(
             currentApp.getDataset(),
             result.journeys,
